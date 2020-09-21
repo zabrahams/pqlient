@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 func main() {
@@ -99,18 +101,21 @@ func terminateMsg() (*bytes.Buffer, error) {
 	buff := new(bytes.Buffer)
 	buff.WriteByte('X')
 	binary.Write(buff, binary.BigEndian, int32(4))
+	buff.WriteByte(0)
 	return buff, nil
 }
 
 func testQuery() (*bytes.Buffer, error) {
-	query := "SELECT * FROM foo;"
+	query := "SELECT * FROM foo"
 	buff := new(bytes.Buffer)
 	buff.WriteByte('Q')
-	err := binary.Write(buff, binary.BigEndian, int32(len(query)))
+	err := binary.Write(buff, binary.BigEndian, int32(len(query)+5))
 	if err != nil {
 		log.Fatal(err)
 	}
 	buff.WriteString(query)
 	buff.WriteByte(0)
+
+	spew.Dump(buff.Bytes())
 	return buff, nil
 }

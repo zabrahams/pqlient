@@ -140,9 +140,37 @@ func (c *Conn) handleAuthResponse(resp []byte) error {
 }
 
 func (c *Conn) handleErrorResponse(resp []byte) error {
-	errorSlice := bytes.Split(resp, []byte{0})
-	for _, e := range errorSlice {
-		fmt.Printf("field: %c\nvalue: %s\n", e[0], e[1:])
+	errors := make(map[byte]string)
+	buff := bytes.NewBuffer(resp)
+	for {
+		b, err := buff.ReadByte()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		} else if b == 0 {
+			break
+		}
+		k := b
+		vBytes := []byte{}
+		for {
+			next, err := buff.ReadByte()
+			if err == io.EOF {
+				break
+			} else if err != nil {
+				return err
+			} else if next == 0 {
+				break
+			}
+
+			vBytes = append(vBytes, next)
+		}
+		v := string(vBytes)
+		errors[k] = v
+	}
+
+	for k, v := range errors {
+		fmt.Printf("field: %c\nvalue: %s\n", k, v)
 	}
 	log.Fatalf("error response")
 	return nil
