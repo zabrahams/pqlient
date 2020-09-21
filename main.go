@@ -1,13 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"net"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -20,23 +21,24 @@ const (
 
 func main() {
 
-	conn, err := net.Dial("tcp", "localhost:5432")
+	rawConn, err := net.Dial("tcp", "localhost:5432")
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
+	conn := newConn(rawConn)
+	defer conn.close()
 
 	stMsg, err := startupMsg()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = sendMsg(conn, stMsg)
+	err = conn.sendMsg(stMsg)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	reader := bufio.NewReader(conn)
+	reader := conn.newReader()
 	for {
 		fmt.Println("reading")
 		respType, err := reader.ReadByte()
@@ -62,47 +64,30 @@ func main() {
 		}
 
 		switch respType {
+		case byte('K'):
+			fmt.Println("parsing backend key data")
+			err = conn.handleBackendKeyDataResponse(resp)
+			if err != nil {
+				log.Fatal(err)
+			}
 		case byte('R'):
 			fmt.Println("parsing auth response")
-			err = parseAuthResponse(resp)
+			err = conn.handleAuthResponse(resp)
 			if err != nil {
 				log.Fatal(err)
 			}
 		case byte('S'):
 			fmt.Println("parsing parameter response")
-			err = parseParameterStatusResponse(resp)
+			err = conn.handleParameterStatusResponse(resp)
 			if err != nil {
 				log.Fatal(err)
 			}
 		default:
+			spew.Dump(conn)
 			log.Fatalf("unknown response type: %c", respType)
 		}
 	}
 
-}
-
-func parseAuthResponse(resp []byte) error {
-	var authRespType int32
-	reader := bytes.NewBuffer(resp[:3])
-	binary.Read(reader, binary.BigEndian, &authRespType)
-	switch authRespType {
-	case AUTHENTICATION_OK:
-		fmt.Println("received AUTHENTICATION OK")
-	case AUTHENTICATION_CLEARTEXT_PASSWORD:
-		fmt.Println("received AUTHENTICATION_CLEARTEXT_PASSWORD")
-	case AUTHENTICATION_KERBEROS_V5:
-		fmt.Println("received AUTHENTICATION_KERBEROS_V5")
-	case AUTHENTICATION_MD5_PASSWORD:
-		fmt.Println("received AUTHENTICATION_MD5_PASSWORD")
-	}
-
-	return nil
-}
-
-func parseParameterStatusResponse(resp []byte) error {
-	paramSlice := bytes.Split(resp, []byte{0})
-	fmt.Printf("PARAM: %s\nVALUE: %s\n\n", string(paramSlice[0]), string(paramSlice[1]))
-	return nil
 }
 
 func startupMsg() (*bytes.Buffer, error) {
@@ -135,19 +120,4 @@ func startupMsg() (*bytes.Buffer, error) {
 	}
 
 	return msg, nil
-}
-
-func sendMsg(conn net.Conn, msg *bytes.Buffer) error {
-	writer := bufio.NewWriter(conn)
-	written, err := writer.Write(msg.Bytes())
-	if err != nil {
-		return err
-	}
-	fmt.Printf("message sent: %d bytes\n", written)
-	err = writer.Flush()
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
