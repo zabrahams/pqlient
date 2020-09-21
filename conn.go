@@ -6,15 +6,26 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+)
 
-	"github.com/davecgh/go-spew/spew"
+const (
+	AUTHENTICATION_OK                 = 0
+	AUTHENTICATION_KERBEROS_V5        = 2
+	AUTHENTICATION_CLEARTEXT_PASSWORD = 3
+	AUTHENTICATION_MD5_PASSWORD       = 5
+	// there are lots more but I dont see them coming up.
+
+	TRANS_STATUS_IDLE     = 'I'
+	TRANS_STATUS_IN_TRANS = 'T'
+	TRANS_STATUS_FAILED   = 'E'
 )
 
 type Conn struct {
-	conn      net.Conn
-	params    map[string]string
-	pid       int32
-	secretKey int32
+	conn              net.Conn
+	params            map[string]string
+	pid               int32
+	secretKey         int32
+	transactionStatus byte
 }
 
 func newConn(conn net.Conn) *Conn {
@@ -74,7 +85,6 @@ func (c *Conn) handleParameterStatusResponse(resp []byte) error {
 }
 
 func (c *Conn) handleBackendKeyDataResponse(resp []byte) error {
-	spew.Dump(resp)
 	var pid, secretKey int32
 	pidReader := bytes.NewBuffer(resp[:4])
 	skeyReader := bytes.NewBuffer(resp[4:8])
@@ -83,5 +93,11 @@ func (c *Conn) handleBackendKeyDataResponse(resp []byte) error {
 	c.secretKey = secretKey
 	c.pid = pid
 	fmt.Println("Received BACKEND KEY DATA")
+	return nil
+}
+
+func (c *Conn) handleReadyForQueryResponse(resp []byte) error {
+	c.transactionStatus = resp[0]
+	fmt.Printf("Ready For Query - transaction status: %c\n", resp[0])
 	return nil
 }

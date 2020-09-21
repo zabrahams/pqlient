@@ -11,14 +11,6 @@ import (
 	"github.com/davecgh/go-spew/spew"
 )
 
-const (
-	AUTHENTICATION_OK                 = 0
-	AUTHENTICATION_KERBEROS_V5        = 2
-	AUTHENTICATION_CLEARTEXT_PASSWORD = 3
-	AUTHENTICATION_MD5_PASSWORD       = 5
-	// there are lots more but I dont see them coming up.
-)
-
 func main() {
 
 	rawConn, err := net.Dial("tcp", "localhost:5432")
@@ -79,6 +71,12 @@ func main() {
 		case byte('S'):
 			fmt.Println("parsing parameter response")
 			err = conn.handleParameterStatusResponse(resp)
+			if err != nil {
+				log.Fatal(err)
+			}
+		case byte('Z'):
+			fmt.Println("parsing ready for query response")
+			err = conn.handleReadyForQueryResponse(resp)
 			if err != nil {
 				log.Fatal(err)
 			}
