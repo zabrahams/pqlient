@@ -5,7 +5,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"log"
 	"net"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 const (
@@ -22,6 +26,7 @@ const (
 
 type Conn struct {
 	conn              net.Conn
+	reader            *bufio.Reader
 	params            map[string]string
 	pid               int32
 	secretKey         int32
@@ -32,6 +37,7 @@ func newConn(conn net.Conn) *Conn {
 	return &Conn{
 		conn:   conn,
 		params: make(map[string]string),
+		reader: bufio.NewReader(conn),
 	}
 }
 
@@ -54,8 +60,65 @@ func (c *Conn) close() {
 	c.conn.Close()
 }
 
-func (c *Conn) newReader() *bufio.Reader {
-	return bufio.NewReader(c.conn)
+func (c *Conn) readAndHandle() {
+	fmt.Println("reading")
+	respType, err := c.reader.ReadByte()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	sizeInBytes := make([]byte, 4)
+	_, err = io.ReadFull(c.reader, sizeInBytes)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var size int32
+	err = binary.Read(bytes.NewBuffer(sizeInBytes), binary.BigEndian, &size)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resp := make([]byte, size-4)
+	_, err = io.ReadFull(c.reader, resp)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	switch respType {
+	case byte('E'):
+		fmt.Println("parsing error response")
+		err = c.handleErrorResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case byte('K'):
+		fmt.Println("parsing backend key data")
+		err = c.handleBackendKeyDataResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case byte('R'):
+		fmt.Println("parsing auth response")
+		err = c.handleAuthResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case byte('S'):
+		fmt.Println("parsing parameter response")
+		err = c.handleParameterStatusResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case byte('Z'):
+		fmt.Println("parsing ready for query response")
+		err = c.handleReadyForQueryResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	default:
+		spew.Dump(c)
+		log.Fatalf("unknown response type: %c", respType)
+	}
 }
 
 func (c *Conn) handleAuthResponse(resp []byte) error {
@@ -73,6 +136,15 @@ func (c *Conn) handleAuthResponse(resp []byte) error {
 		fmt.Println("received AUTHENTICATION_MD5_PASSWORD")
 	}
 
+	return nil
+}
+
+func (c *Conn) handleErrorResponse(resp []byte) error {
+	errorSlice := bytes.Split(resp, []byte{0})
+	for _, e := range errorSlice {
+		fmt.Printf("field: %c\nvalue: %s\n", e[0], e[1:])
+	}
+	log.Fatalf("error response")
 	return nil
 }
 

@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 func main() {
@@ -30,62 +28,39 @@ func main() {
 		log.Fatal(err)
 	}
 
-	reader := conn.newReader()
 	for {
-		fmt.Println("reading")
-		respType, err := reader.ReadByte()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		sizeInBytes := make([]byte, 4)
-		_, err = io.ReadFull(reader, sizeInBytes)
-		if err != nil {
-			log.Fatal(err)
-		}
-		var size int32
-		err = binary.Read(bytes.NewBuffer(sizeInBytes), binary.BigEndian, &size)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		resp := make([]byte, size-4)
-		_, err = io.ReadFull(reader, resp)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		switch respType {
-		case byte('K'):
-			fmt.Println("parsing backend key data")
-			err = conn.handleBackendKeyDataResponse(resp)
-			if err != nil {
-				log.Fatal(err)
-			}
-		case byte('R'):
-			fmt.Println("parsing auth response")
-			err = conn.handleAuthResponse(resp)
-			if err != nil {
-				log.Fatal(err)
-			}
-		case byte('S'):
-			fmt.Println("parsing parameter response")
-			err = conn.handleParameterStatusResponse(resp)
-			if err != nil {
-				log.Fatal(err)
-			}
-		case byte('Z'):
-			fmt.Println("parsing ready for query response")
-			err = conn.handleReadyForQueryResponse(resp)
-			if err != nil {
-				log.Fatal(err)
-			}
-		default:
-			spew.Dump(conn)
-			log.Fatalf("unknown response type: %c", respType)
+		conn.readAndHandle()
+		if conn.transactionStatus != 0 {
+			break
 		}
 	}
 
+	queryMsg, err := testQuery()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("sending test query")
+	err = conn.sendMsg(queryMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for {
+		conn.readAndHandle()
+	}
+
+	tMsg, err := terminateMsg()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("send terminate to close connection")
+	err = conn.sendMsg(tMsg)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("connection terminated and session complete")
 }
 
 func startupMsg() (*bytes.Buffer, error) {
@@ -118,4 +93,24 @@ func startupMsg() (*bytes.Buffer, error) {
 	}
 
 	return msg, nil
+}
+
+func terminateMsg() (*bytes.Buffer, error) {
+	buff := new(bytes.Buffer)
+	buff.WriteByte('X')
+	binary.Write(buff, binary.BigEndian, int32(4))
+	return buff, nil
+}
+
+func testQuery() (*bytes.Buffer, error) {
+	query := "SELECT * FROM foo;"
+	buff := new(bytes.Buffer)
+	buff.WriteByte('Q')
+	err := binary.Write(buff, binary.BigEndian, int32(len(query)))
+	if err != nil {
+		log.Fatal(err)
+	}
+	buff.WriteString(query)
+	buff.WriteByte(0)
+	return buff, nil
 }
