@@ -85,6 +85,12 @@ func (c *Conn) readAndHandle() {
 	}
 
 	switch respType {
+	case byte('D'):
+		fmt.Println("parsing data row response")
+		err = c.handleDataRowResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
 	case byte('E'):
 		fmt.Println("parsing error response")
 		err = c.handleErrorResponse(resp)
@@ -106,6 +112,12 @@ func (c *Conn) readAndHandle() {
 	case byte('S'):
 		fmt.Println("parsing parameter response")
 		err = c.handleParameterStatusResponse(resp)
+		if err != nil {
+			log.Fatal(err)
+		}
+	case byte('T'):
+		fmt.Println("parsing row description response")
+		err = c.handleRowDescriptionResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -139,6 +151,17 @@ func (c *Conn) handleAuthResponse(resp []byte) error {
 	return nil
 }
 
+func (c *Conn) handleDataRowResponse(resp []byte) error {
+	b := bytes.NewBuffer(resp)
+	columns, err := readColumns(b)
+	if err != nil {
+		return err
+	}
+
+	spew.Dump(columns)
+	return nil
+}
+
 func (c *Conn) handleErrorResponse(resp []byte) error {
 	errors := make(map[byte]string)
 	buff := bytes.NewBuffer(resp)
@@ -152,20 +175,10 @@ func (c *Conn) handleErrorResponse(resp []byte) error {
 			break
 		}
 		k := b
-		vBytes := []byte{}
-		for {
-			next, err := buff.ReadByte()
-			if err == io.EOF {
-				break
-			} else if err != nil {
-				return err
-			} else if next == 0 {
-				break
-			}
-
-			vBytes = append(vBytes, next)
+		v, err := readString(buff)
+		if err != nil {
+			return err
 		}
-		v := string(vBytes)
 		errors[k] = v
 	}
 
@@ -199,5 +212,15 @@ func (c *Conn) handleBackendKeyDataResponse(resp []byte) error {
 func (c *Conn) handleReadyForQueryResponse(resp []byte) error {
 	c.transactionStatus = resp[0]
 	fmt.Printf("Ready For Query - transaction status: %c\n", resp[0])
+	return nil
+}
+
+func (c *Conn) handleRowDescriptionResponse(resp []byte) error {
+	fmt.Println("got row description!")
+	fields, err := readFields(bytes.NewBuffer(resp))
+	spew.Dump(fields)
+	if err != nil {
+		return err
+	}
 	return nil
 }

@@ -7,8 +7,6 @@ import (
 	"io"
 	"log"
 	"net"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 func main() {
@@ -116,6 +114,23 @@ func testQuery() (*bytes.Buffer, error) {
 	buff.WriteString(query)
 	buff.WriteByte(0)
 
-	spew.Dump(buff.Bytes())
 	return buff, nil
+}
+
+func readString(b *bytes.Buffer) (string, error) {
+	bs := []byte{}
+	for {
+		next, err := b.ReadByte()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return "", err
+		} else if next == 0 {
+			break
+		}
+
+		bs = append(bs, next)
+	}
+
+	return string(bs), nil
 }
