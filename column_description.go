@@ -10,7 +10,7 @@ const (
 	FORMAT_CODE_TEXT   = 0
 )
 
-type field struct {
+type colDesc struct {
 	name          string
 	tableOID      int32
 	columnAttrNum int16
@@ -20,45 +20,45 @@ type field struct {
 	formatCode    int16
 }
 
-func readField(b *bytes.Buffer) (field, error) {
+func readColDesc(b *bytes.Buffer) (colDesc, error) {
 	var name string
 	var tableOID, typeMod, typeOID int32
 	var columnAttrNum, typeSize, formatCode int16
 	name, err := readString(b)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 	err = binary.Read(b, binary.BigEndian, &tableOID)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
 	err = binary.Read(b, binary.BigEndian, &columnAttrNum)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
 	err = binary.Read(b, binary.BigEndian, &typeOID)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
 	err = binary.Read(b, binary.BigEndian, &typeSize)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
 	err = binary.Read(b, binary.BigEndian, &typeMod)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
 	err = binary.Read(b, binary.BigEndian, &formatCode)
 	if err != nil {
-		return field{}, err
+		return colDesc{}, err
 	}
 
-	f := field{
+	f := colDesc{
 		name:          name,
 		tableOID:      tableOID,
 		columnAttrNum: columnAttrNum,
@@ -72,21 +72,21 @@ func readField(b *bytes.Buffer) (field, error) {
 
 }
 
-func readFields(b *bytes.Buffer) ([]field, error) {
-	var numFields int16
-	err := binary.Read(b, binary.BigEndian, &numFields)
+func readColDescs(b *bytes.Buffer) ([]colDesc, error) {
+	var numColDesc int16
+	err := binary.Read(b, binary.BigEndian, &numColDesc)
 	if err != nil {
 		return nil, err
 	}
 
-	fields := make([]field, numFields)
-	for i := 0; i < int(numFields); i++ {
-		f, err := readField(b)
+	colDesc := make([]colDesc, numColDesc)
+	for i := 0; i < int(numColDesc); i++ {
+		f, err := readColDesc(b)
 		if err != nil {
 			return nil, err
 		}
-		fields[i] = f
+		colDesc[i] = f
 	}
 
-	return fields, nil
+	return colDesc, nil
 }

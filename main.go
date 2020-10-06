@@ -7,6 +7,8 @@ import (
 	"io"
 	"log"
 	"net"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 func main() {
@@ -29,26 +31,26 @@ func main() {
 	}
 
 	for {
-		conn.readAndHandle()
+		msgType, resp, err := conn.readMsg()
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		conn.handleResp(msgType, resp)
 		if conn.transactionStatus != 0 {
 			break
 		}
 	}
 
-	queryMsg, err := testQuery()
+	query := NewSimpleQuery(conn, "SELECT * FROM foo;")
+
+	err = query.Exec()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("sending test query")
-	err = conn.sendMsg(queryMsg)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for {
-		conn.readAndHandle()
-	}
+	fmt.Println("Query handled")
+	spew.Dump("Results:", query.rows)
 
 	tMsg, err := terminateMsg()
 	if err != nil {
@@ -100,20 +102,6 @@ func terminateMsg() (*bytes.Buffer, error) {
 	buff.WriteByte('X')
 	binary.Write(buff, binary.BigEndian, int32(4))
 	buff.WriteByte(0)
-	return buff, nil
-}
-
-func testQuery() (*bytes.Buffer, error) {
-	query := "SELECT * FROM foo"
-	buff := new(bytes.Buffer)
-	buff.WriteByte('Q')
-	err := binary.Write(buff, binary.BigEndian, int32(len(query)+5))
-	if err != nil {
-		log.Fatal(err)
-	}
-	buff.WriteString(query)
-	buff.WriteByte(0)
-
 	return buff, nil
 }
 

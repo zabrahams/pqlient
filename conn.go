@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -60,7 +61,7 @@ func (c *Conn) close() {
 	c.conn.Close()
 }
 
-func (c *Conn) readAndHandle() {
+func (c *Conn) readMsg() (byte, []byte, error) {
 	fmt.Println("reading")
 	respType, err := c.reader.ReadByte()
 	if err != nil {
@@ -84,46 +85,44 @@ func (c *Conn) readAndHandle() {
 		log.Fatal(err)
 	}
 
+	return respType, resp, nil
+}
+
+func (c *Conn) handleResp(respType byte, resp []byte) {
 	switch respType {
-	case byte('D'):
-		fmt.Println("parsing data row response")
-		err = c.handleDataRowResponse(resp)
+	case byte('C'):
+		fmt.Println("parsing close command")
+		err := c.handleCloseResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case byte('E'):
 		fmt.Println("parsing error response")
-		err = c.handleErrorResponse(resp)
+		err := c.handleErrorResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case byte('K'):
 		fmt.Println("parsing backend key data")
-		err = c.handleBackendKeyDataResponse(resp)
+		err := c.handleBackendKeyDataResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case byte('R'):
 		fmt.Println("parsing auth response")
-		err = c.handleAuthResponse(resp)
+		err := c.handleAuthResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case byte('S'):
 		fmt.Println("parsing parameter response")
-		err = c.handleParameterStatusResponse(resp)
-		if err != nil {
-			log.Fatal(err)
-		}
-	case byte('T'):
-		fmt.Println("parsing row description response")
-		err = c.handleRowDescriptionResponse(resp)
+		err := c.handleParameterStatusResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
 	case byte('Z'):
 		fmt.Println("parsing ready for query response")
-		err = c.handleReadyForQueryResponse(resp)
+		err := c.handleReadyForQueryResponse(resp)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -146,6 +145,33 @@ func (c *Conn) handleAuthResponse(resp []byte) error {
 		fmt.Println("received AUTHENTICATION_KERBEROS_V5")
 	case AUTHENTICATION_MD5_PASSWORD:
 		fmt.Println("received AUTHENTICATION_MD5_PASSWORD")
+	}
+
+	return nil
+}
+
+func (c *Conn) handleCloseResponse(resp []byte) error {
+	b := bytes.NewBuffer(resp)
+	statementType, err := b.ReadByte()
+	if err != nil {
+		return err
+	}
+
+	if statementType == 'S' {
+		fmt.Println("closing prepared statement")
+	} else if statementType == 'P' {
+		fmt.Println("closing portal")
+	} else {
+		return errors.New("unknown statement type closed")
+	}
+
+	name, err := readString(b)
+	if err != nil {
+		return err
+	}
+
+	if name != "" {
+		fmt.Printf("statement is named: %s\n", name)
 	}
 
 	return nil
@@ -212,15 +238,5 @@ func (c *Conn) handleBackendKeyDataResponse(resp []byte) error {
 func (c *Conn) handleReadyForQueryResponse(resp []byte) error {
 	c.transactionStatus = resp[0]
 	fmt.Printf("Ready For Query - transaction status: %c\n", resp[0])
-	return nil
-}
-
-func (c *Conn) handleRowDescriptionResponse(resp []byte) error {
-	fmt.Println("got row description!")
-	fields, err := readFields(bytes.NewBuffer(resp))
-	spew.Dump(fields)
-	if err != nil {
-		return err
-	}
 	return nil
 }
